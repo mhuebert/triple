@@ -19,12 +19,13 @@
                 :let [res (class-fn out class-name)]
                 ;; continue until class-fn returns something
                 :while (nil? res)])
-        out))))
+        (when (pos? (.-length out))
+          out)))))
 
 (defn- registry-lookup [styles class-name]
   (j/call resolve-class-string :clear)
-  (some->> (j/!get class-registry class-name)
-           (j/extend! styles)))
+  (when-some [class-styles (j/!get class-registry class-name)]
+    (j/extend! class-styles styles)))
 
 (defn register-class-fn!
   "Adds `f` to list of class lookup functions.
@@ -47,12 +48,17 @@
 (defn register-class! [class-name style-obj]
   (j/!set class-registry class-name style-obj))
 
+(defn add-styles! [styles new-styles]
+  (cond (nil? styles) new-styles
+        (array? styles) (.push styles new-styles)
+        :else #js[styles new-styles]))
+
 (hiccup/set-prop-handler!
   "className"
   (j/fn [^:js js-props _ className]
     (js-delete js-props "className")
     (j/!update js-props :style
                (fn [existing-styles]
-                 (cond->> (resolve-class-string className)
-                          (array? existing-styles)
-                          (j/push! existing-styles))))))
+                 (if-some [class-styles (resolve-class-string className)]
+                   (add-styles! existing-styles class-styles)
+                   existing-styles)))))

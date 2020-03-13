@@ -68,7 +68,8 @@
                  (when ~'triple.view/refresh-enabled? (~signature))
                  ~@(drop-last body)
                  (~'triple.view.hiccup/to-element ~(last body))))
-             (j/!set :displayName ~qualified-name)))
+             (j/!set :displayName ~qualified-name)
+             (~'triple.view.hiccup/mark-clj-view!)))
 
        (when ~'triple.view/refresh-enabled?
          ;; type, key, forceReset, getCustomHooks

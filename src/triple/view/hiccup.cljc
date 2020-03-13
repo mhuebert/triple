@@ -8,6 +8,27 @@
             [triple.util.props :as props])
   (:require-macros triple.view.hiccup))
 
+
+;; because of CLJS bug https://clojure.atlassian.net/browse/CLJS-2380
+;; we use a marker key instead of a protocol
+(def ^:private IClojureView (munge `IClojureView))
+
+(defn mark-clj-view! [x]
+  (j/!set x ^string IClojureView true))
+
+(defn is-clj-view? [x]
+  (and (identical? "function" (js* "typeof ~{}" x))
+       ^boolean (js-in IClojureView x)))
+
+;; Props and children are handled in 2 ways:
+;;
+;; 1. IClojureView (defined by triple.view)
+;;    - pass both props & children as arguments to the function
+;;    - extract react `key` and `ref` from props
+;;
+;; 2. All other views (eg. :div, SomeJSView)
+;; - convert props to JS, child vectors to hiccup
+
 (defn map->js-camel
   "Return javascript object with camelCase keys (shallow)"
   [v]
@@ -43,13 +64,7 @@
 (def ^:private prop-handlers
   (j/obj
     :for (fn [o k v] (j/!set o "htmlFor" v))
-    :class (fn [o _ v]
-             (j/!update o "className"
-                        (fn [tag-classes]
-                          (cond-> (join-classes v)
-                                  (cond/defined? tag-classes)
-                                  (str " " tag-classes)))))
-    :id (fn [o k v] o)
+    :class (fn [o _ v] (j/!set o "className" (join-classes v)))
     :style prop-map->js
     :dangerouslySetInnerHTML prop-map->js
     :default (fn [o k v] (j/!set o (prop-camel k) v))))
@@ -76,29 +91,47 @@
                     (j/!get prop-handlers "default"))]
       (handler o attr-name v))))
 
-(defn props->js
-  "Returns a React-conformant javascript object. An alternative to clj->js,
-  allowing for key renaming without an extra loop through every prop map."
-  [match props primitive?]
-  (cond (object? props) props
-        primitive?
-        (j/let [^:js [tag id classes] match
-                js-props (reduce-kv prop->js (j/obj :id id
-                                                    :className classes) props)
-                id (j/!get js-props :id)
-                className (j/!get js-props :className)]
-          (cond-> js-props
-                  (some? id)
-                  (prop->js "id" id)
+(defn- join-some-strs [a b]
+  ;; joins `a` and `b` which may be nil
+  (if (some? a)
+    (if (some? b)
+      (str a " " b)
+      a)
+    b))
 
-                  (some? className)
-                  (prop->js "className" (dots->spaces className))))
-        :else
-        (let [key (get props :key)
-              ref (get props :ref)]
-          (cond-> (js-obj)
-                  (some? key) (j/!set :key key)
-                  (some? ref) (j/!set :ref ref)))))
+(defn- react-props
+  ;; extracts 'special' React props from clj map
+  [props-map]
+  (let [key (get props-map :key)
+        ref (get props-map :ref)]
+    (cond-> (j/obj)
+            (some? key) (j/!set :key key)
+            (some? ref) (j/!set :ref ref))))
+
+(defn- js-reduce-kv
+  ;; reduce-kv for a js object
+  [f init obj]
+  (let [obj-keys (js-keys obj)]
+    (areduce obj-keys i
+             out init
+             (let [k (aget obj-keys i)]
+               (f out k (j/!get obj ^string k))))))
+
+(defn- js-props
+  ;; converts clj map into js props
+  [match props]
+  (j/let [^:js [tag id classes] match
+          js-props (if (object? props)
+                     (js-reduce-kv prop->js #js{} props)
+                     (reduce-kv prop->js #js{} props))
+          id (j/!get js-props :id id)
+          className (join-some-strs (j/!get js-props :className) classes)]
+    (cond-> js-props
+            (some? id)
+            (prop->js "id" id)
+
+            (some? className)
+            (prop->js "className" (dots->spaces className)))))
 
 (defn -parse-tag
   "Returns array of [tag-name, id, classes] from a tag-name like div#id.class1.class2"
@@ -114,39 +147,28 @@
 
 (declare to-element)
 
-;; WIP
-;; Deciding on API for different cases:
-;; - Clojure view: pass "props" as child, only extract key and ref
-;; - Primitive view (React, React Native): convert props to JS, convert child vectors to hiccup
-;; - External JS view: convert props to JS, convert child vectors to hiccup
-;; ...how to differentiate between Clojure views and external JS views?
-;;    ...a marker protocol?
-;;    ...pass a javascript object in the props position?
-
 (defn make-element
   "Returns a React element. `tag` may be a string or a React component (a class or a function).
    Children will be read from `form` beginning at index `start`."
-  ([element-type form ^boolean primitive?]
+  ([element-type form]
    (let [props (props/get-props form 1)
          props? (cond/defined? props)
-         primitive? (or primitive? (and props? (object? props)))]
+         clj? (is-clj-view? element-type)]
      (make-element element-type
                    (when props?
-                     (props->js nil props primitive?))
+                     (if clj? (react-props props)
+                              (js-props nil props)))
                    form
-                   (if (and props? primitive?) 2 1)
-                   primitive?)))
-  ([element-type js-props form children-start primitive?]
+                   (if (or clj? (not props?)) 1 2)
+                   clj?)))
+  ([element-type props-obj form children-start clj?]
    (let [form-count (count form)
-         to-element (if primitive? to-element identity)]
+         to-element (if clj? identity to-element)]
      (case (- form-count children-start)                    ;; fast cases for small numbers of children
-       0 (react/createElement element-type js-props)
+       0 (react/createElement element-type props-obj)
        1 (let [first-child (nth form children-start)]
-           (if (seq? first-child)
-             ;; a single seq child should not create intermediate fragment
-             (make-element element-type js-props (vec first-child) 0 primitive?)
-             (react/createElement element-type js-props (to-element first-child))))
-       (let [out #js[element-type js-props]]
+           (react/createElement element-type props-obj (to-element first-child)))
+       (let [out #js[element-type props-obj]]
          (loop [i children-start]
            (if (== i form-count)
              (.apply react/createElement nil out)
@@ -155,33 +177,27 @@
                (recur (inc i))))))))))
 
 (defonce tag-handlers
-         (j/obj "#" react/Suspense))
+         (j/obj "#" react/Suspense
+                "<>" react/Fragment))
 
 (defn to-element
   "Converts Hiccup form into a React element"
   [form]
   (cond (vector? form) (let [tag (-nth form 0)]
                          (if (keyword? tag)
-                           (case tag
-                             :<> (make-element react/Fragment form true)
-                             (j/let [^:js [tag-name :as match] (parse-tag (name tag))
-                                     tag (j/!get tag-handlers
-                                                 tag-name
-                                                 tag-name)
-                                     props (props/get-props form 1)
-                                     props? (cond/defined? props)
-                                     ;; keyword elements are considered React primitives.
-                                     ;; - props are converted to js,
-                                     ;; - children are passed through `to-element`
-                                     primitive? true]
-                               (make-element tag
-                                             (props->js match (when props? props) primitive?)
-                                             form
-                                             (if props? 2 1)
-                                             primitive?)))
-                           (make-element tag form false)))
-        (seq? form) (make-element react/Fragment nil form 0 true)
+                           (j/let [^:js [tag-name :as match] (parse-tag (name tag))
+                                   tag (j/!get tag-handlers
+                                               tag-name
+                                               tag-name)
+                                   props (props/get-props form 1)
+                                   props? (cond/defined? props)]
+                             (make-element tag
+                                           (js-props match (when props? props))
+                                           form
+                                           (if props? 2 1)
+                                           false))
+                           (make-element tag form)))
+        (seq? form) (make-element react/Fragment nil (vec form) 0 false)
         (satisfies? IElement form) (-to-element form)
-        (array? form) (make-element (aget form 0) form true)
         :else form))
 
