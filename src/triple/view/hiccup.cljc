@@ -76,20 +76,23 @@
                     (j/!get prop-handlers "default"))]
       (handler o attr-name v))))
 
-(j/defn props->js
+(defn props->js
   "Returns a React-conformant javascript object. An alternative to clj->js,
   allowing for key renaming without an extra loop through every prop map."
-  [^:js [tag id classes] props]
-  (let [js-props (reduce-kv prop->js (j/obj :id id
-                                            :className classes) props)
-        id (j/!get js-props :id)
-        className (j/!get js-props :className)]
-    (cond-> js-props
-            (cond/defined? id)
-            (prop->js "id" id)
+  [match props]
+  (if (object? props)
+    props
+    (j/let [^:js [tag id classes] match
+            js-props (reduce-kv prop->js (j/obj :id id
+                                                :className classes) props)
+            id (j/!get js-props :id)
+            className (j/!get js-props :className)]
+      (cond-> js-props
+              (some? id)
+              (prop->js "id" id)
 
-            (cond/defined? className)
-            (prop->js "className" (dots->spaces className)))))
+              (some? className)
+              (prop->js "className" (dots->spaces className))))))
 
 (defn -parse-tag
   "Returns array of [tag-name, id, classes] from a tag-name like div#id.class1.class2"
@@ -108,22 +111,24 @@
 (defn make-element
   "Returns a React element. `tag` may be a string or a React component (a class or a function).
    Children will be read from `form` beginning at index `start`."
-  ([element-type form]
+  ([element-type form parse-children?]
    (let [props (props/get-props form 1)
          props? (cond/defined? props)]
      (make-element element-type
                    (when props?
                      (props->js nil props))
                    form
-                   (if props? 2 1))))
-  ([element-type js-props form start]
-   (let [form-count (count form)]
+                   (if props? 2 1)
+                   parse-children?)))
+  ([element-type js-props form start parse-children?]
+   (let [form-count (count form)
+         to-element (if parse-children? to-element identity)]
      (case (- form-count start)                             ;; fast cases for small numbers of children
        0 (react/createElement element-type js-props)
        1 (let [first-child (nth form start)]
            (if (seq? first-child)
              ;; a single seq child should not create intermediate fragment
-             (make-element element-type js-props (vec first-child) 0)
+             (make-element element-type js-props (vec first-child) 0 parse-children?)
              (react/createElement element-type js-props (to-element first-child))))
        (let [out #js[element-type js-props]]
          (loop [i start]
@@ -136,11 +141,13 @@
 (defonce tag-handlers
          (j/obj "#" react/Suspense))
 
-(defn to-element [form]
+(defn to-element
+  "Converts Hiccup form into a React element"
+  [form]
   (cond (vector? form) (let [tag (-nth form 0)]
                          (cond (keyword? tag)
                                (case tag
-                                 :<> (make-element react/Fragment nil form 1)
+                                 :<> (make-element react/Fragment nil form 1 true)
                                  (j/let [^:js [tag-name :as match] (parse-tag (name tag))
                                          tag (j/!get tag-handlers
                                                      tag-name
@@ -150,20 +157,11 @@
                                    (make-element tag
                                                  (props->js match (when props? props))
                                                  form
-                                                 (if props? 2 1))))
-                               :else (make-element tag form)))
-        (seq? form) (make-element react/Fragment nil form 0)
+                                                 (if props? 2 1)
+                                                 (string? tag))))
+                               :else (make-element tag form false)))
+        (seq? form) (make-element react/Fragment nil form 0 true)
         (satisfies? IElement form) (-to-element form)
-        (array? form) (make-element (aget form 0) form)
+        (array? form) (make-element (aget form 0) form true)
         :else form))
-
-(defn element
-  "Converts Hiccup form into a React element. If a non-vector form
-   is supplied, it is returned untouched. Attribute and style keys
-   are converted from `dashed-names` to `camelCase` as spec'd by React.
-
-   - optional -
-   :create-element (fn) overrides React.createElement."
-  [form]
-  (to-element form))
 

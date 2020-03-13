@@ -8,7 +8,7 @@
    Props can be nil or a Clojure map."
   [form i]
   (cond/when-defined [props (nth form i js/undefined)]
-    (if (or (nil? props) (map? props))
+    (if (or (nil? props) (object? props) (map? props))
       props
       js/undefined)))
 

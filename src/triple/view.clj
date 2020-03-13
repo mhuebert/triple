@@ -76,3 +76,6 @@
          (~'triple.view/register! ~display-name ~qualified-name))
 
        ~display-name)))
+
+(defmacro to-element [form]
+  `(~'triple.view.hiccup/to-element ~form))

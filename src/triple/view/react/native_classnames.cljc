@@ -8,12 +8,7 @@
 (goog/exportSymbol "RN" RN)
 
 (defonce class-registry #js{})
-
-(defn- registry-lookup [styles class-name]
-  (some->> (j/!get class-registry class-name)
-           (j/extend! styles)))
-
-(defonce class-functions #js[registry-lookup])
+(defonce class-functions #js[])
 
 (def ^:private resolve-class-string
   (memo/by-string
@@ -25,6 +20,11 @@
                 ;; continue until class-fn returns something
                 :while (nil? res)])
         out))))
+
+(defn- registry-lookup [styles class-name]
+  (j/call resolve-class-string :clear)
+  (some->> (j/!get class-registry class-name)
+           (j/extend! styles)))
 
 (defn register-class-fn!
   "Adds `f` to list of class lookup functions.
