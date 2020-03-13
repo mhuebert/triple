@@ -79,20 +79,26 @@
 (defn props->js
   "Returns a React-conformant javascript object. An alternative to clj->js,
   allowing for key renaming without an extra loop through every prop map."
-  [match props]
-  (if (object? props)
-    props
-    (j/let [^:js [tag id classes] match
-            js-props (reduce-kv prop->js (j/obj :id id
-                                                :className classes) props)
-            id (j/!get js-props :id)
-            className (j/!get js-props :className)]
-      (cond-> js-props
-              (some? id)
-              (prop->js "id" id)
+  [match props primitive?]
+  (cond (object? props) props
+        primitive?
+        (j/let [^:js [tag id classes] match
+                js-props (reduce-kv prop->js (j/obj :id id
+                                                    :className classes) props)
+                id (j/!get js-props :id)
+                className (j/!get js-props :className)]
+          (cond-> js-props
+                  (some? id)
+                  (prop->js "id" id)
 
-              (some? className)
-              (prop->js "className" (dots->spaces className))))))
+                  (some? className)
+                  (prop->js "className" (dots->spaces className))))
+        :else
+        (let [key (get props :key)
+              ref (get props :ref)]
+          (cond-> (js-obj)
+                  (some? key) (j/!set :key key)
+                  (some? ref) (j/!set :ref ref)))))
 
 (defn -parse-tag
   "Returns array of [tag-name, id, classes] from a tag-name like div#id.class1.class2"
@@ -108,30 +114,40 @@
 
 (declare to-element)
 
+;; WIP
+;; Deciding on API for different cases:
+;; - Clojure view: pass "props" as child, only extract key and ref
+;; - Primitive view (React, React Native): convert props to JS, convert child vectors to hiccup
+;; - External JS view: convert props to JS, convert child vectors to hiccup
+;; ...how to differentiate between Clojure views and external JS views?
+;;    ...a marker protocol?
+;;    ...pass a javascript object in the props position?
+
 (defn make-element
   "Returns a React element. `tag` may be a string or a React component (a class or a function).
    Children will be read from `form` beginning at index `start`."
-  ([element-type form parse-children?]
+  ([element-type form ^boolean primitive?]
    (let [props (props/get-props form 1)
-         props? (cond/defined? props)]
+         props? (cond/defined? props)
+         primitive? (or primitive? (and props? (object? props)))]
      (make-element element-type
                    (when props?
-                     (props->js nil props))
+                     (props->js nil props primitive?))
                    form
-                   (if props? 2 1)
-                   parse-children?)))
-  ([element-type js-props form start parse-children?]
+                   (if (and props? primitive?) 2 1)
+                   primitive?)))
+  ([element-type js-props form children-start primitive?]
    (let [form-count (count form)
-         to-element (if parse-children? to-element identity)]
-     (case (- form-count start)                             ;; fast cases for small numbers of children
+         to-element (if primitive? to-element identity)]
+     (case (- form-count children-start)                    ;; fast cases for small numbers of children
        0 (react/createElement element-type js-props)
-       1 (let [first-child (nth form start)]
+       1 (let [first-child (nth form children-start)]
            (if (seq? first-child)
              ;; a single seq child should not create intermediate fragment
-             (make-element element-type js-props (vec first-child) 0 parse-children?)
+             (make-element element-type js-props (vec first-child) 0 primitive?)
              (react/createElement element-type js-props (to-element first-child))))
        (let [out #js[element-type js-props]]
-         (loop [i start]
+         (loop [i children-start]
            (if (== i form-count)
              (.apply react/createElement nil out)
              (do
@@ -145,21 +161,25 @@
   "Converts Hiccup form into a React element"
   [form]
   (cond (vector? form) (let [tag (-nth form 0)]
-                         (cond (keyword? tag)
-                               (case tag
-                                 :<> (make-element react/Fragment nil form 1 true)
-                                 (j/let [^:js [tag-name :as match] (parse-tag (name tag))
-                                         tag (j/!get tag-handlers
-                                                     tag-name
-                                                     tag-name)
-                                         props (props/get-props form 1)
-                                         props? (cond/defined? props)]
-                                   (make-element tag
-                                                 (props->js match (when props? props))
-                                                 form
-                                                 (if props? 2 1)
-                                                 (string? tag))))
-                               :else (make-element tag form false)))
+                         (if (keyword? tag)
+                           (case tag
+                             :<> (make-element react/Fragment form true)
+                             (j/let [^:js [tag-name :as match] (parse-tag (name tag))
+                                     tag (j/!get tag-handlers
+                                                 tag-name
+                                                 tag-name)
+                                     props (props/get-props form 1)
+                                     props? (cond/defined? props)
+                                     ;; keyword elements are considered React primitives.
+                                     ;; - props are converted to js,
+                                     ;; - children are passed through `to-element`
+                                     primitive? true]
+                               (make-element tag
+                                             (props->js match (when props? props) primitive?)
+                                             form
+                                             (if props? 2 1)
+                                             primitive?)))
+                           (make-element tag form false)))
         (seq? form) (make-element react/Fragment nil form 0 true)
         (satisfies? IElement form) (-to-element form)
         (array? form) (make-element (aget form 0) form true)
