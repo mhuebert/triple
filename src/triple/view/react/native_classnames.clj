@@ -36,3 +36,10 @@
            `(~'triple.view.react.native-classnames/register-class!
               ~(name k)
               (styles ~v)))))
+
+(defmacro defstyle [the-name styles]
+  (if (keyword? the-name)
+    `(~'triple.view.react.native-classnames/register-class!
+       ~(name the-name)
+       (styles ~styles))
+    `(def ~the-name (styles ~styles))))

@@ -56,6 +56,13 @@
         :else #js[styles new-styles]))
 
 (hiccup/set-prop-handler!
+  "style"
+  (fn prop-map->js [o k v]
+    (j/!set o k (if (vector? v)
+                  (reduce #(j/push! %1 (hiccup/map->js-camel %2)) #js[] v)
+                  (hiccup/map->js-camel v)))))
+
+(hiccup/set-prop-handler!
   "className"
   (j/fn [^:js js-props _ className]
     (js-delete js-props "className")

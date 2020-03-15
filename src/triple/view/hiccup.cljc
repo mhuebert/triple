@@ -32,9 +32,11 @@
 (defn map->js-camel
   "Return javascript object with camelCase keys (shallow)"
   [v]
-  (->> v
-       (reduce-kv (fn [obj k v]
-                    (j/!set obj (string/camel-case (name k)) v)) (j/obj))))
+  (if (map? v)
+    (->> v
+         (reduce-kv (fn [obj k v]
+                      (j/!set obj (string/camel-case (name k)) v)) (j/obj)))
+    v))
 
 (defn prop-map->js [o k v]
   (j/!set o k (cond-> v (map? v) (map->js-camel))))
