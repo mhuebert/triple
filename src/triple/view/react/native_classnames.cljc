@@ -2,6 +2,7 @@
   (:require [applied-science.js-interop :as j]
             [triple.view.hiccup :as hiccup]
             [triple.util.memo :as memo]
+            [goog.object :as gobj]
             ["react-native" :as RN])
   #?(:cljs (:require-macros triple.view.react.native-classnames)))
 
@@ -14,18 +15,17 @@
   (memo/by-string
     (fn [class-string]
       (let [out #js{}]
-        (doseq [class-name (.split class-string #" +")
-                class-fn class-functions
-                :let [res (class-fn out class-name)]
-                ;; continue until class-fn returns something
-                :while (nil? res)])
-        (when (pos? (.-length out))
+        ;; loop through each class
+        (doseq [class-name (.split class-string #" +")]
+          (doseq [class-fn class-functions
+                  ;; stop at first function that returns something
+                  :while (nil? (class-fn out class-name))]))
+        (when-not (gobj/isEmpty out)
           out)))))
 
 (defn- registry-lookup [styles class-name]
-  (j/call resolve-class-string :clear)
-  (when-some [class-styles (j/!get class-registry class-name)]
-    (j/extend! class-styles styles)))
+  (some->> (j/!get class-registry class-name)
+           (j/extend! styles)))
 
 (defn register-class-fn!
   "Adds `f` to list of class lookup functions.
@@ -35,7 +35,7 @@
   [key f]
   (let [identifier (str key)
         ident-key (str ::key)]
-    (j/call resolve-class-string :clear)
+    (memo/clear! resolve-class-string)
     ;; remove previous function with same identifier
     (.filter class-functions (fn [f] (not= identifier (j/get f ident-key))))
     ;; attach identifier to function
@@ -46,19 +46,17 @@
 (register-class-fn! ::registry-lookup registry-lookup)
 
 (defn register-class! [class-name style-obj]
+  (memo/clear! resolve-class-string)
   (j/!set class-registry class-name style-obj))
 
 (defn add-styles! [styles new-styles]
   (cond (nil? styles) new-styles
-        (array? styles) (.push styles new-styles)
+        (nil? new-styles) styles
+        (array? styles) (j/push! styles new-styles)
         :else #js[styles new-styles]))
 
 (hiccup/set-prop-handler!
   "className"
   (j/fn [^:js js-props _ className]
     (js-delete js-props "className")
-    (j/!update js-props :style
-               (fn [existing-styles]
-                 (if-some [class-styles (resolve-class-string className)]
-                   (add-styles! existing-styles class-styles)
-                   existing-styles)))))
+    (j/!update js-props :style add-styles! (resolve-class-string className))))

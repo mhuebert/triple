@@ -17,3 +17,6 @@
 
            ;; clear the memory
            (j/assoc! :clear #(vreset! mem #js{}))))))
+
+(defn clear! [memoized-fn]
+  (j/call memoized-fn :clear))
