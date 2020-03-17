@@ -13,10 +13,9 @@
 
 (def ^:private resolve-class-string
   (memo/by-string
-    (fn [class-string]
+    (fn [^string class-string]
       (let [out #js{}]
-        ;; loop through each class
-        (doseq [class-name (.split class-string #" +")]
+        (doseq [class-name (.split class-string #" +")] ;; loop through every classname
           (doseq [class-fn class-functions
                   ;; stop at first function that returns something
                   :while (nil? (class-fn out class-name))]))

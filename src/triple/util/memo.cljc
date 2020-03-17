@@ -8,15 +8,16 @@
      (memoize f)
 
      :cljs
-     (let [mem (volatile! #js{})]
-       (-> (fn [x]
-             (j/!get @mem ^string x
-                     (let [v (f x)]
-                       (j/!set @mem x v)
-                       v)))
+     (let [state (j/lit {:value {}})]
+       (-> (fn [^string x]
+             (let [cache (j/!get state :value)]
+               (j/!get cache x
+                       (let [v (f x)]
+                         (j/!set cache x v)
+                         v))))
 
            ;; clear the memory
-           (j/assoc! :clear #(vreset! mem #js{}))))))
+           (j/assoc! :clear #(j/!set state :value #js{}))))))
 
 (defn clear! [memoized-fn]
   (j/call memoized-fn :clear))

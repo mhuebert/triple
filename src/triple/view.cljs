@@ -19,4 +19,3 @@
 (defn signature-fn []
   (when refresh-enabled?
     (j/call js/ReactRefresh :createSignatureFunctionForTransform)))
-
