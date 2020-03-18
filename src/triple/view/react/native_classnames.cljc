@@ -48,7 +48,7 @@
   (memo/clear! resolve-class-string)
   (j/!set class-registry class-name style-obj))
 
-(defn add-styles! [styles new-styles]
+(defn- add-styles! [styles new-styles]
   (cond (nil? styles) new-styles
         (nil? new-styles) styles
         (array? styles) (j/push! styles new-styles)

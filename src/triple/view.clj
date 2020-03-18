@@ -64,7 +64,7 @@
                (j/let [children# (if (~'cljs.core/array? children#)
                                    children#
                                    (~'cljs.core/array children#))
-                       ~(with-meta argv {:js true}) children#]
+                       ~(with-meta argv {:js/shallow true}) children#]
                  (when ~'triple.view/refresh-enabled? (~signature))
                  ~@(drop-last body)
                  (~'triple.view.hiccup/to-element ~(last body))))

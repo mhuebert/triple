@@ -24,7 +24,7 @@
        obj#)))
 
 (defmacro stylesheet!
-  "Returns Clojure map containing validated style objects
+  "Registers styles globally
 
   Usage:
   (classes
