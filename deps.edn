@@ -1,2 +1,6 @@
 {:paths ["src"]
- :deps {appliedscience/js-interop {:mvn/version "0.2.5"}}}
+ :deps {appliedscience/js-interop {:mvn/version "0.2.5"}}
+ :aliases
+ {:release
+  {:extra-deps {applied-science/deps-library {:mvn/version "0.4.0"}}
+   :main-opts ["-m" "applied-science.deps-library"]}}}

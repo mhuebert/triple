@@ -1,9 +1,9 @@
-(ns triple.view.react.native-classnames
-  (:require [applied-science.js-interop :as j]
+(ns triple.view.react-native.classnames
+  (:require  ["react-native" :as RN]
+             [applied-science.js-interop :as j]
             [triple.view.hiccup :as hiccup]
             [triple.util.memo :as memo]
-            [goog.object :as gobj]
-            ["react-native" :as RN])
+            [goog.object :as gobj])
   #?(:cljs (:require-macros triple.view.react.native-classnames)))
 
 (goog/exportSymbol "RN" RN)

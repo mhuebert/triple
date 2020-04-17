@@ -1,9 +1,8 @@
-(ns triple.view.react.atom
+(ns triple.view.react.experimental.atom
   (:refer-clojure :exclude [use])
   (:require ["react" :as react]
-            [triple.view.react.mutable-source :as mutable]
             [applied-science.js-interop :as j]
-            [triple.view :as v]
+            [triple.view.react.experimental.mutable-source :as mutable]
             [triple.view.react.hooks :as hooks]))
 
 (defonce ^:private listener-counter (volatile! 0))
@@ -64,11 +63,7 @@
   "Returns an atom backed by a React mutable source."
   [initial-val]
   (let [ratom (ReactiveAtom. initial-val #js{} nil nil)
-        get-snapshot #(do #_(try (throw (js/Error. "Undefined source"))
-                                 (catch js/Error e
-                                   (js/console.log (if (undefined? %)
-                                                     "undefined" "defined") (.-stack e))))
-                        (.-state ratom))
+        get-snapshot #(.-state ratom)
         get-version get-snapshot]
     (j/!set ratom .-get-snapshot get-snapshot)
     (j/!set ratom .-source (mutable/create ratom get-version))))

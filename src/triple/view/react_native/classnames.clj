@@ -1,4 +1,4 @@
-(ns triple.view.react.native-classnames
+(ns triple.view.react-native.classnames
   (:require [applied-science.js-interop :as j]
             [clojure.string :as str]))
 
@@ -33,13 +33,13 @@
   [& classes]
   (assert (even? (count classes)))
   `(do ~@(for [[k v] (partition 2 classes)]
-           `(~'triple.view.react.native-classnames/register-class!
+           `(~'triple.view.react-native.classnames/register-class!
               ~(name k)
               (styles ~v)))))
 
 (defmacro defstyle [the-name styles]
   (if (keyword? the-name)
-    `(~'triple.view.react.native-classnames/register-class!
+    `(~'triple.view.react-native.classnames/register-class!
        ~(name the-name)
        (styles ~styles))
     `(def ~the-name (styles ~styles))))

@@ -1,4 +1,4 @@
-(ns triple.view.react.mutable-source
+(ns triple.view.react.experimental.mutable-source
   (:refer-clojure :exclude [use])
   (:require ["react" :as react]
             [applied-science.js-interop :as j]))

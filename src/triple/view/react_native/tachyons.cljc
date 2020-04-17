@@ -1,4 +1,4 @@
-(ns triple.view.tachyons
+(ns triple.view.react-native.tachyons
   (:require ["react-native-style-tachyons" :as tachyons]
             ["react-native-style-tachyons/lib/styles/lineHeight" :default lineHeight]
             [applied-science.js-interop :as j]
